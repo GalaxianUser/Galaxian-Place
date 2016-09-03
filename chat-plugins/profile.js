@@ -1,9 +1,15 @@
 'use strict';
-/*eslint no-restricted-modules: [0]*/
 
 let color = require('../config/color');
 let moment = require('moment');
+let geoip = {};
 
+try {
+	geoip = require('geoip-ultralight');
+	geoip.startWatchingDataUpdate();
+} catch (e) {
+	console.error(e);
+}
 let BR = '<br>';
 let SPACE = '&nbsp;';
 let profileColor = '#24678d';
@@ -86,13 +92,15 @@ function label(text) {
 }
 
 function currencyName(amount) {
-	let name = " buck";
+	let name = " Galaxy Point";
 	return amount === 1 ? name : name + "s";
 }
 
 Profile.prototype.avatar = function () {
 	if (this.isOnline) {
-		if (typeof this.image === 'string') return img(this.url + ':' + Config.port + '/avatars/' + this.image);
+		// easter egg avatars (#teamrocket, #bwelesa2, #yellow)
+		if (this.image && typeof this.image === 'string' && this.image.charAt(0) === "#") return img('http://play.pokemonshowdown.com/sprites/trainers/' + this.image.slice(1) + '.png');
+		if (typeof this.image === 'string') return img(this.url + '/avatars/' + this.image);
 		return img('http://play.pokemonshowdown.com/sprites/trainers/' + this.image + '.png');
 	}
 	for (let name in Config.customAvatars) {
@@ -111,10 +119,10 @@ Profile.prototype.buttonAvatar = function () {
 
 Profile.prototype.group = function () {
 	if (this.isOnline && this.user.group === ' ') return label('Group') + 'Regular User';
-	if (this.isOnline) return label('Group') + Config.groups[this.user.group].name;
+	if (this.isOnline) return label('Group') + '(' + Config.groups[this.user.group].symbol + ')' + SPACE + Config.groups[this.user.group].name;
 	for (let name in Users.usergroups) {
 		if (toId(this.username) === name) {
-			return label('Group') + Config.groups[Users.usergroups[name].charAt(0)].name;
+			return label('Group') + '(' + Config.groups[Users.usergroups[name].charAt(0)].symbol + ')' + SPACE + Config.groups[Users.usergroups[name].charAt(0)].name;
 		}
 	}
 	return label('Group') + 'Regular User';
@@ -125,13 +133,31 @@ Profile.prototype.money = function (amount) {
 };
 
 Profile.prototype.name = function () {
-	return label('Name') + bold(font(color(toId(this.username)), this.username));
+	function getFlag() {
+		if (!this.isOnline) return false;
+		if (this.isOnline) {
+			let geo = geoip.lookupCountry(this.user.latestIp);
+			if (!geo) {
+				return false;
+			} else {
+				return ' <img src="https://github.com/kevogod/cachechu/blob/master/flags/' + geo.toLowerCase() + '.png?raw=true" height=10 title="' + geo + '">';
+			}
+		}
+	}
+	if (!getFlag.call(this)) return label('Name') + bold(font(Galaxy.hashColor(toId(this.username)), this.username));
+	if (getFlag.call(this)) return label('Name') + bold(font(Galaxy.hashColor(toId(this.username)), this.username)) + ' ' + getFlag.call(this);
 };
 
 Profile.prototype.seen = function (timeAgo) {
 	if (this.isOnline) return label('Last Seen') + font('#2ECC40', 'Currently Online');
-	if (!timeAgo) return label('Last Seen') + 'Never';
-	return label('Last Seen') + moment(timeAgo).fromNow();
+	if (!timeAgo) return label('Last Seen') + font('red', 'Never');
+    return label('Last Seen') + moment(timeAgo).fromNow();
+};
+
+Profile.prototype.vip = function () {
+	if (typeof this.user === 'string' && toId(this.user) in Users.vips) return ' (<font color=#6390F0><b>VIP User</b></font>)';
+	if (this.user && this.user.userid in Users.vips) return ' (<font color=#6390F0><b>VIP User</b></font>)';
+	return '';
 };
 
 Profile.prototype.show = function (callback) {
@@ -139,7 +165,7 @@ Profile.prototype.show = function (callback) {
 
 	return this.buttonAvatar() +
 		SPACE + this.name() + BR +
-		SPACE + this.group() + BR +
+		SPACE + this.group() + this.vip() + BR +
 		SPACE + this.money(Db('money').get(userid, 0)) + BR +
 		SPACE + this.seen(Db('seen').get(userid)) +
 		'<br clear="all">';
